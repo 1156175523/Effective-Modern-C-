@@ -302,7 +302,7 @@ f(x);
   
   ​	在这个例子中，编译器使用 expr 去推导 ParamType 和 T 的类型。
   
-  ​	当使用 auto 声明变量时，auto 相当于模板中的 T，并且变量的类型说明符为 ParamType。话不多说来看例子：
+  ​	当使用 auto 声明变量时，**auto 相当于模板中的 T，并且变量的类型说明符为 ParamType**。话不多说来看例子：
   
   ```c++
   auto x = 27;
@@ -436,9 +436,9 @@ f(x);
   
   -----
   
-  ### *item2 ：了解 decltype*
+  ### *item3：了解 decltype*
   
-  ​	给定名称或者表达式，decltype 会告诉你名称或表达式的类型。但是有时它提供的结果有些让人捉摸不透，我们将从典型的案例开始--那些正常情况，与模板和 auto 类型推导的过程相反，decltype 通常会会回溯传给它的名称或表达式的确切类型：
+  ​	给定名称或者表达式，decltype 会告诉你名称或表达式的类型。但是有时它提供的结果有些让人捉摸不透，我们将从典型的案例开始--那些正常情况，与模板和 auto 类型推导的过程相反，decltype 通常会回溯传给它的名称或表达式的确切类型：
   
   ```c++
   const int i = 0;	// decltype(i) is const int
@@ -478,7 +478,7 @@ f(x);
   }
   ```
   
-  ​	在函数名前使用 auto 与类型推导无关。相反，它表明正在使用 C++11 的未遂返回类型语法，即函数的返回类型将在参数列表之后（在"->"之后）声明。尾随返回类型的优点是函数的参数可以在返回类型的规范中使用。例如，在 authAndAccess 中，我们指定使用 c 和 i 返回类型。如果我们以传统方式将返回类型放在函数名之前，c 和 i 将不可用，因为他们还没有被声明。有了这样的声明，authAndAccess 返回类型即 operator[] 作用于传入容器时返回的任何类型，正是我们所期望的类型。
+  ​	在函数名前使用 auto 与类型推导无关。相反，它表明正在使用 C++11 的尾随返回类型语法，即函数的返回类型将在参数列表之后（在"->"之后）声明。***尾随返回类型的优点是函数的参数可以在返回类型的规范中使用。例如，在 authAndAccess 中，我们指定使用 c 和 i 返回类型。如果我们以传统方式将返回类型放在函数名之前，c 和 i 将不可用，因为他们还没有被声明***。有了这样的声明，authAndAccess 返回类型即 operator[] 作用于传入容器时返回的任何类型，正是我们所期望的类型。
   
   ​	C++11 允许推到单个语句 lambda 表达式的返回类型，C++14 将此扩展到所有 lambda 和所有函数，包括具有多个语句的函数。在 authAndAccess 的例子中，这就意味着 C++14 中我们可以忽略尾随返回类型，只留下前导 auto。使用这种声明形式，auto 确实意味着将进行类型推导。特别是，这意味着编译器将从函数的实现中推导出函数的返回类型：
   
@@ -491,21 +491,313 @@ f(x);
   }
   ```
   
-  ​	item2 
+  ​	item2  解释了 auto 返回类型规范相关的函数，编译器使用模板类型推导。这个情况下就会出现问题，正如我们所讨论的，对于大多数 T 的容器 operator[] 返回 T&，但是 item1 阐述了在模板类型推导期间，初始化表达式的引用会被忽略。考虑这个对客户端代码意味着什么：
   
+  ```c++
+  std::deque<int> d;
+  ...
+  authAndAccess(d, 5) = 10; // authendticate user, return d[5], then assign 10 to 							  // it,thiswon't complie!
+  ```
   
+  ​	这里，d[5] 返回一个 int&，但是 authAndAccess 的 auto 返回类型推导将会剥离引用，从而产生一个 int 返回类型。作为函数返回值的 int 是一个右值，因此上面的代码尝试将 10 赋值给一个右值 int，这在 C++11 中是被禁止的，所以编译不同。
   
+  ​	为了让 authAndAccess 像我们想要的那样工作，我们需要使用 decltype 类型推导，即指定 authAndAccess 应该返回与表达式 c[i] 返回完全相同的类型。C++14 中允许使用 decltype(auto) 来推导 auto 的类型。最初看起来矛盾的 decltype 和 auto，实际上很有意义：auto 指定需要推导的类型，而 decltype 表示应该在推导过程中使用 decltype 规则。因此，我们可以这样编写 authAndAccess:
   
+  ```c++
+  template <typename Container, typename Index> // c++14; works, 
+  											  // but still requires refinement
+  decltype(auto)
+  authAndAccess(Container& c, Index i)
+  {
+      authenticateUser();
+      return c[i];
+  }
+  ```
   
+  ​	现在 authAndAccess 将真正返回 c[i] 返回的任何内容。特别的，对于 c[i] 返回的任何内容。特别是，对 c[i]  返回 T& 的常见情况，authAndAccess 也将返回 T&，而在 c[i] 返回对象的罕见情况下，authAndAccess 也将返回一个对象。
   
+  ​	decltype(auto) 的使用不仅限于函数返回类型。它也可以使用在变量声明，decltype 类型推导规则将应用于初始化表达式：
   
+  ```c++
+  Widget w;
+  const Widget& cw = w;
+  auto myWidget1 = cw;			// auto type deduction
+  								// myWidget1's type is Widget
+  decltype(auto) myWidget2 = cw;	// decltype type deduction:
+  								// myWidget2's type is const Widget&
+  ```
   
+  ​	接下来讲述 authAndAccess 的改进，再看一下 C++14 版本的 authAndAccess 声明：
   
+  ```c++
+  template<typename Container, typename Index>
+  decltype(auto) authAndAccess(Container& c, Index i);
+  ```
   
+  ​	容器的入参是非常量引用，因为返回容器元素的引用允许客户端修改该容器。这就意味着无法将右值容器传递给此函数。右值不能绑定到左值引用（除非是常量引用）。
   
+  ​	将右值容器传递给 authAndAccess 是一个边缘情况。作为临时对象的右值容器通常会在调用 authAndAccess 的语句结束时被销毁，这就意味着对该容器中元素的引用（即 authAndAccess 返回的元素）将终止在创建它的语句结尾。尽管如此，将临时对象传递给 authAndAccess 还是有意义的，就比如客户端可能只想赋值临时容器中的元素：
   
+  ```c++
+  std::deque<std::string> makeStringDeque();	// factory function
+  // make copy of 5th element of deque returned
+  // from makeStringDeque
+  auto s = authAndAccess(makeStringDeque(), 5);
+  ```
   
+  ​	支持以上这些功能意味着我们需要修改 authAndAccess 的声明以接受左值和右值。声明一个左值引用参数，另一个声明右值引用参数可以完美解决，但是我们就得维护两个函数。为了避免这种情况我们可以让 authAndAccess 绑定一个左值和右值的引用参数，就是 item24 中讲解的通用引用。因此可以这样声明authAndAccess:
   
+  ```c++
+  template <typename Container, typename Index> 			// c is now a 
+  decltype(auto) authAndAccess(Container&& c, Index i);   // universal reference
+  ```
+  
+  ​	在这个模板中，我们不知道操作的容器是什么类型，也不知道使用到的 Index 是啥类型。对未知类型的对象使用值传递通常会造成不必要的拷贝，还有对象的切片问题（参考 item41），但是我们现在使用的标准模板是可以通过索引来获取元素的（如，operator[] 作用于 std::string，std::vector，std::deque）。所以在这里我们使用按值传递。(*就是说这里的代码有缺陷，只是为了演示，点明注意一下！！！*)
+  
+  ​	下面我们会用到 item25 中讲到的 std::forward 实现 C++14 的终极版本模板:
+  
+  ```c++
+  template<typename Container, typename Index>	// final C++14 version
+  decltype(auto) authAndAccess(Container&& c, Index i)
+  {
+      authenticateUser();
+      return std::forward<Container>(c)[i];
+  }
+  ```
+  
+  ​	以上的模板声明应该满足我们所有的要求了，但是必须使用 C++14 编译器。如果非 C++14 编译器版本则需要使用 C++11 版本模板，功能相同只是 C++11 版本需要指定返回类型：
+  
+  ```c++
+  template <typename Container, typename Index>	// final C++11 version
+  auto authAndAccess(Container&& c, Index i)
+  -> decltype(std::forward<Container>(c)[i])
+  {
+      authenticateUser();
+      return std::forward<Container>(c)[i];
+  }
+  ```
+  
+  ​	要完全理解 decltype 的行为，还必须熟悉部分特殊情况。其中大部分的内容都太晦涩难懂，无法在书中去描述讨论，为此我们观察其中一个来深入了解 decltype 及其用法。
+  
+  ​	将 decltype 应用于名称会产生该名称的声明类型。名称是左值表达式，但是不会影响 decltype 的行为。左值表达式比名称要复杂，decltype 推导的类型始终是左值引用。也就是，如果除名称之外的左值表达式具有类型 T，则 decltype 将该类型推导为 T&。这很少有影响，因为大多数左值表达式的类型固有的包含左值引用限定符。例如，返回左值的函数总是返回左值引用。
+  
+  ​	这里有个值得关注的点，如下：
+  
+  ```c++
+  int x = 0;
+  ```
+  
+  ​	x 是变量的名称，所以 decltype(x) 是 int。但是将名称 x 阔在括号里--"(x)"--会产生一个比名称更复杂的表达式。x 和 (x) 都是左值，因此 decltype((x)) 推导出的结果是 int&。***将变量名称使用()包裹起来会更改 decltype 推导的类型!!!***。这是 C++11 其中一个新奇的地方，再结合 C++14 对 decltype(auto) 的支持，在函数的 return 语句中如果发生如上微不足道的更改将会影响函数返回类型的推导：
+  
+  ```c++
+  decltype(auto) f1()
+  {
+  	int x = 0;
+      ...
+  	return x;		// decltype(x) is int, so f1 return int
+  }
+  
+  decltype(auto) f2()
+  {
+      int x = 0;
+      ...
+  	return (x);		// decltype((x)) is int&, so f2 return int&
+  }
+  ```
+  
+  ​	这不仅会更改函数返回的类型，还会导致访问一个局部变量的引用！这将会导致出现未知的行为，需要多加留意。
+  
+  **小结：**
+  
+  * decltype 几乎总是能正确推导除变量或表达式的类型
+  * 对于除变量名意外的 T 类型左值表达式，decltype 推导类型为 T&
+  * C++14 支持 decltype(auto) 同时使用，它同 auto 一样，从初始值中推导出类型，但是它使用 decltype的推导规则
+  
+  ----
+  
+  ### *item4：知道如何查看被推导类型*
+  
+  ​	查看类型推导结果的工具选择取决于你需要的信息处于软件开发过程的那个阶段。我们将在三个阶段阐述：编码阶段，编译期间以及运行阶段。
+  
+  ##### **IDE 编辑器**
+  
+  ​	当你的光标悬停在实体上时，IDE中的代码编辑器通常会显示程序实体的类型（例如，变量、参数、函数等）。例如，给定下面代码：
+  
+  ```c++
+  const int theAnswer = 42;
+  auto x = theAnswer;
+  auto y = &theAnswer;
+  ```
+  
+  IDE编辑器将会展示 x 的推导类型是 int，y 的类型是 const int*。这些功能需要编译器支持，通常内置类型IDE很容易识别，但是涉及复杂的类型，IDE显示的信息可能不是特别有用。
+  
+  ##### **编译器诊断**
+  
+  ​	让编译器显示它推导出的类型的一种有效办法是以导致编译出错的方式使用该类型。报告的错误信息几乎肯定提到导致问题的类型。例如，如果我们想查看前面例子 x 和 y 推导的类型，我首先声明一我们没有定义的类模板：
+  
+  ```c++
+  template <typename T>	// declaration only for TD; TD == "Type Displayer"
+  class TD;
+  ```
+  
+  ​	尝试实例化此模板将会引发错误信息，因为没有要实例化的模板定义。要查看 x 和 y 的类型，只需要尝试使用他们的类型实例化 TD:
+  
+  ```c++
+  TD<decltype(x)> xType;	// elicit error containing
+  TD<decltype(y)> yType;	// x's and y's types
+  ```
+  
+  使用变量名形式的变量是为了方便查看错误日志，对于上面的代码，编译器发出的诊断信息部分如下：
+  
+  ```c++
+  error: aggregate 'TD<int> xType' has incomplete type and cannot be defined
+  error: aggregate 'TD<const int *> yType' has incomplete type and cannot be defined
+  ```
+  
+  不同编译器提供相同的信息，但是形式不同，如下：
+  
+  ```c++
+  error: 'xType' uses undefined class 'TD<int>'
+  error: 'yType' uses undefined class 'TD<const int *>'
+  ```
+  
+  撇开格式的差异不同，所有的编译器都会提示带类型信息的错误消息。
+  
+  ##### 运行输出
+  
+  ​	显示类型信息的 printf 方法（不是我建议使用printf）直到运行时才能使用，但是它提供了对格式的完全控制。重点在于创建显示自己关心的类型的文本表示。你可能会想 typeid 和std::type_info::name 简直就是救星！在我们继续探索为 x 和 y 推到的类型时，你可能认为我们可以这样写：
+  
+  ```c++
+  std::cout << typeid(x).name() << '\n';	// display types for
+  std::cout << typeif(y).name() << '\n';	// x and y
+  ```
+  
+  ​	这个方法的实现原理是这样的，在诸如 x 和 y 之类的对象上调用 typeid 会产生一个 std::type_info 对象，而 std::type_info 有一个成员函数 name，它会产生一个 C 风格的字符串（即，一个const char*）类型名称。
+  
+  ​	对 std::type_info::name 的调用不会保证返回任何合理的信息，但是会尽力提供帮助。人性化的程度各不相同。例如，GUN 和 Clang 编译器会提示 x 的类型为 "i"，y 的类型为 "PKi"。一旦了解了这些编译器的输出信息，"i" 表示 "int"，"PK" 表示"指向 kconst const 的指针"，这信息就会变得有意义。（两个编译器都支持c++filt，它可以对这种"错位"类型进行解码。）微软的编译器输出的信息会好一些：x 是 "int"，y 是 "const int *"。
+  
+  ​	从结果看 x 和 y 的类型是正确的，所以你能会认为类型推导问题已经解决，但是这太草率了，让我们来看一个更复杂的例子：
+  
+  ```c++
+  template <typename T>				// template function to be called
+  void f(const T& param);
+  
+  std::vector<Widget> createVec();	// factory function
+  const auto vw = createVec();		// init vw w/factory return
+  
+  if (!vw.empty())
+  {
+      f(&vw[0]);						// call f
+      ...
+  }
+  ```
+  
+  ​	这段代码包含一个用户定义的类型 Widget 、一个STL容器 std::vector 和一个自动变量 vw ，更方便我们观察编译器的类型推导。如：模板类型参数 T 和 f 中函数参数 param 推导出了哪些类型。
+  
+  ​	在这个问题上使用 typeid 会更简单点。只需要在 f 中添加一些代码即可显示想要观察的类型：
+  
+  ```c++
+  template <typename T>
+  void f(const T& param)
+  {
+      using std::cout;
+      cout << "T = " << typeid(T).name() << '\n';			// show T
+      cout << "param = " << typeid(param).name() << '\n';	// show param's type
+      ...
+  }
+  ```
+  
+  由 GUN 和 Clang 编译器生成的可执行程序输出如下：
+  
+  ```c++
+  T = PK6Widget
+  param = PK6Widget
+  ```
+  
+  我们已经知道，对于这些编译器，PK 的意思是"pointer to const "，所以唯一的疑惑是这个 6 。这只是类名（Widget）包含的字符数。所以这些编译器告诉我们 T 和 param 都是 const Widget* 类型。
+  
+  微软编译器也是如此：
+  
+  ```c++
+  T = class Widget const *
+  param = class Widget const *
+  ```
+  
+  ​	三个对立的编译器产生相同的信息，表明信息是准确的。但是仔细看，在模板 f 中，param 的声明类型是 const T&。既然如此，T 和 param 的类型相同是不是很奇怪？例如，如果 T 是 int，则 param 的类型应该是const int & --- 根本不是同一个类型。侧面反映 std::type_info::name 的结果并不可靠。在这种情况下，举个例子，所有的三种编译器报告的 param  的类型都是不正确的。更深入的话，它们本来就是不正确的，因为 std::type_info::name  的特化指定了类型会被当做它们被传给模板函数的时候的按值传递的参数。正如 item1所述，这就意味着如果类型是一个引用，他的引用特性会被忽略，如果在忽略引用之后存在 const（或者 volatile  ），它的 const  特性（或者 volatile  特性）会被忽略。这就是为什么 param  的类型—— const Widget * const &  ——被报告成了 const Widget*  。首先类型的引用特性被去掉了，然后结果参数指针的 const  特性也被消除了。
+  
+  ​	同样的，由IDE编辑器显示的类型信息也并不准确——或者说至少并不可信。对之前的相
+  同的例子，一个我知道的IDE的编辑器报告出 T  的类型：
+  
+  ```c++
+  const
+  std::_Simple_types<std::_Wrap_alloc<std::_Vec_base_types<Widget,
+  std::allocator<Widget> >::_Alloc>::value_type>::value_type *
+  ```
+  
+  还是这个相同的IDE编辑器， param  的类型是：
+  
+  ```c++
+  const std::_Simple_types<...>::value_type *const &
+  ```
+  
+  ​	这个没有 T  的类型那么吓人，但是中间的“...”会让你感到困惑，直到你发现这是IDE编辑器的一种说辞“我们省略所有 T  类型的部分”。带上一点运气，你的开发环境也许会对这样的代码有着更好的表现。
+  ​	如果你更加倾向于库而不是运气，你就应该知道 std::type_info::name  可能在IDE中会显示类型失败，但是Boost TypeIndex库（经常写做Boost.TypeIndex）是被设计成可以成功显示的。这个库并不是C++标准的一部分，也不是IDE和模板的一部分。更深层的是，事实上Boost库（在boost.com）是一个跨平台的，开源的，并且基于一个偏执的团队都比较喜欢的协议。这就意味着基于标准库之上使用Boost库的代码接近于一个跨平台的体验。
+  ​	这里展示了一段我们使用Boost.TypeIndex的函数 f  精准的输出类型信息：
+  
+  ```c++
+  #include <boost/type_index.hpp>
+  template<typename T>
+  void f(const T& param)
+  {
+  using std::cout;
+  using boost::typeindex::type_id_with_cvr;
+  // show T
+  cout << "T = "
+  << type_id_with_cvr<T>().pretty_name()
+  << '\n';
+  // show param's type
+  cout << "param = "
+  << type_id_with_cvr<decltype(param)>().pretty_name()
+  << '\n';
+  …
+  }
+  ```
+  
+  ​	这个模板函数 boost::typeindex::type_id_with_cvr  接受一个类型参数（我们想知道的类型信
+  息）来正常工作，它不会去除 const  ， volatile  或者引用特性（这也就是模板中的“ cvr  ”的
+  意思）。返回的结果是个 boost::typeindex::type_index  对象，其中的 pretty_name  成员函数
+  产出一个 std::string  包含一个对人比较友好的类型展示的字符串。
+  ​	通过这个 f  的实现，再次考虑之前使用 typeid  导致推导出现错误的 param  类型信息：
+  
+  ```c++
+  std::vector<Widget> createVec(); // 工厂方法
+  const auto vw = createVec(); // init vw w/factory return
+  if (!vw.empty()) {
+  f(&vw[0]); // 调用f
+  …
+  }
+  ```
+  
+  在GNU和Clang的编译器下面，Boost.TypeIndex输出（准确）的结果：
+  
+  ```c++
+  T = Widget const*
+  param = Widget const* const&
+  ```
+  
+  微软的编译器实际上输出的结果是一样的：
+  
+  ```c++
+  T = class Widget const *
+  param = class Widget const * const &
+  ```
+  
+  这种接近相同的结果很漂亮，但是需要注意IDE编辑器，编译器错误信息，和类似于Boost.TypeIndex的库仅仅是一个对你编译类型推导的一种工具而已。所有的都是有帮助意义的，但是到目前为止，没有什么关于类型推导法则1-3的替代品。
+  
+  **小结：**
+  
+  * 类型推导的结果常常可以通过IDE的编辑器，编译器错误输出信息和Boost TypeIndex库的结果中得到
+  * 一些工具的结果不一定有帮助性也不一定准确，所以对C++标准的类型推导法则加以理解是很有必要的
   
   
   
