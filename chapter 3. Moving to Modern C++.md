@@ -1448,29 +1448,313 @@ constexpr auto reflectedMid = reflection(mid);		// reflectedMid's value
 ​	在解决有关数学方面相关的问题时，如声明一个表示多项式的类。在这个类中，有一个函数来计算多项式的根，即多项式计算为零的值。这个函数不会修改多项式，因此将其声明为 const ：
 
 ```c++
+// 计算多项式并返回结果
 class polynomial{
   public:
-    using RootsType = 			// data structure holding values where polynomial
-        std::vector<double>;	// evals to zero (see Item9 for info on "using")
-    ...
-	RootsType roots() const;
-    ...
+    using RootsType = std::vector<double>; // data structure holding 											   // values where evals to zero 											// (see Item9 for info on
+    RootsType roots() const
+    {
+        if(!rootsAreValid){			// if cache not valid
+            ...						// compute roots, store them in rootVals
+			rootsAreValid = true;
+        }
+        return rootVals;
+    }
+  private:
+    mutable bool rootAreValid{false};	// see Item7 for info
+    mutable RootsType rootVals{};		// on initializers
 };
 ```
 
+​	假设两个线程同时调用 Polynomial 对象的根：
 
+```c++
+Polynomial p;
+...
+/*---- Thread 1 -----*/       	/*---- Thread 2 -------*/
+auto rootsOfp = p.roots();		auto valsGivingZero = p.roots();
+```
 
+​	这个场景非常最常见，因为 roots 是 const 成员函数，也就是代表只读操作。但是类内部的 rootAreValid 和 rootVals。这就意味着这段代码可以让不同的线程在没有同步的情况下读取和写入相同的内存（声明为const 但是并非线程安全），这将导致未定义的行为。
 
+​	最简单的解决方法是：使用 mutex。
+
+```c++
+class Polynomial{
+  public:
+    using RootsType = std::vector<double>;
+    RootsType roots() const
+    {
+        std::lock_guard<std::mutex> g(m);		// lock mutex
+        if (!rootsAreValid){					// if cache not valid
+            ...									// compute/store roots
+			rootsAreValid = true;
+        }
+        return rootVals;
+    }											// unlock mutex
+    
+  private:
+    mutable std::mutex m;
+    mutable bool rootsAreValid{false};
+    mutable RootsType rootVals{};
+};
+```
+
+​	std::mutex m 被声明为可变的，因为加锁和解锁它在 roots 中。需要留意的是因为 std::mutex 是一种仅可移动类型（即可以移动但是不能复制的类型），将 m 添加到Polynomial 的副作用是 Polynomial 失去了被复制的能力。但是，它仍然可以移动。
+
+​	在某些情况下，使用 std::mutex 会有种杀猪用牛刀的感觉。例如，如果只是想统计成员函数被调用的次数，则 std::atomic 计数器（即保证线程原子性操作计数器 - 参看item40）通常更加轻量。（他是否真的更轻巧取决于运行的硬件和标准库中互斥锁的实现）以下是给出的例子：
+
+```c++
+class Point{		// 2D point
+  public:
+    ...
+	double distanceFromOrigin() const noexcept		// see Item 14
+    {												// for noexcept
+        ++callCount;						// atomic increment
+        return std::sqrt((x*x) + (y*y));
+    }
+  private:
+    mutable std::atomic<unsigned> callCount{0};
+    double x,y;
+};
+```
+
+​	跟 std::mutex 一样，std::atomic 也是只移动类型，所以 Point 中 callCount 的存在意味着 Point 也是只移动类型。
+
+​	因为对 std::atomic 变量的操作通常比 std::mutex 的获取和释放成本低，所以简单的上下文环境一般更倾向于使用 std ::atomic。例下：
+
+```c++
+class Widgit{
+  public:
+    ...
+	int magicValue() const
+    {
+        if (cacheValid)
+        {
+            return cachedValue;
+        }
+        else
+        {
+            auto val1 = expensiveComputation1();
+            auto val2 = expensiceComputation2();
+            cacheValue = val1 + val2;			// part1
+            cacheValid = true;					// part2
+            return cachedValue;
+        }
+    }
+  private:
+    mutable std::atomic<bool> cacheValid{false};
+    mutable std::atomic<int> cachedValue;
+};
+```
+
+假设遇到下面这个情况：
+
+* 一个线程调用 Widget::magicValue，此时 cacheValid 为 false，执行运算并将 val1 和 val2 的运算结果求和分配给 cacheValue，还未执行到 cacheValid = true。
+* 此时，第二个线程调用 Widget::magincValue，此时 cacheValid 还是  false，因此执行内容跟第一个线程完全一样（这个"第二个线程"实际上可能是任何其他线程）
+
+这种行为明显不是我们所需要的。那如果将 cacheValid 和 cacheValue 的赋值顺序颠倒如何:
+
+```c++
+class Widgit{
+  public:
+    ...
+	int magicValue() const
+    {
+        if (cacheValid)
+        {
+            return cachedValue;
+        }
+        else
+        {
+            auto val1 = expensiveComputation1();
+            auto val2 = expensiceComputation2();
+            cacheValid = true;					// part2
+            cacheValue = val1 + val2;			// part1
+            return cachedValue;
+        }
+    }
+  ...
+};
+```
+
+假设cacheValid 为 false ，然后：
+
+* 第一个线程调用 Widget::magicValue 并运行到 cacheValid 设置为 true 处
+* 此时，第二个线程调用 Widget::magicValue 并检查 cacheValid 为 true，线程返回 cacheValue，即使第一个线程尚未对其进行分配。因此返回的值肯定不正确。
+
+这里有一个开发经验：***对于需要同步的单个变量或者内存，使用 std::atomic 就足够了，但是一旦涉及到两个或者多个变量、内存，则必须使用互斥锁***。以上 Widget::magicValue 就是这样:
+
+```c++
+class Widget{
+  public:
+    ...
+	int magicValue() const
+    {
+        std::lock_guard<std::mutex> guard(m);		// lock m
+        if (cacheValid)
+        {
+            return cachedValue;
+        }
+        else
+        {
+            auto val1 = expensiveComputation1();
+            auto val2 = expensiceComputation2();
+            cacheValid = true;					// part2
+            cacheValue = val1 + val2;			// part1
+            return cachedValue;
+        }
+    }												// unlock
+    ...
+  private:
+    mutable std::mutex m;
+    mutable bool cacheValid;	// no longer atomic
+    mutable int cacheValue;		// no longer atomic
+};
+```
 
 **小结**
 
-
+* 使 const 成员函数线程安全，除非确定他们永远不会在并发上下文中使用
+* 使用 std::atomic 变量可能比互斥锁提供更好的性能，但是它们仅适用于操作单个变量或内存的情况
 
 -----
 
 #### Item 17. 了解特殊成员函数生成
 
+​	在C++官方说法中，C++ 会生成一些特殊的成员函数。C++98 有这样四个函数：默认构造、析构函数、拷贝构造、赋值构造。生成的特殊成员函数是 public 和 inline 类型，并且它们是非虚函数，除非是继承自基类（如基类的析构函数，编译器为派生类生成的析构函数也是虚函数）。
+
+​	从 C++11 开始，特殊成员函数中又添加了两个：移动构造函数和移动赋值运算符。声明如下：
+
+```c++
+class Widget{
+  public:
+    ...
+	Widget(Widget&& rhs);				// move constructor
+    Widget& operator=(Widget** rhs);	// move assignment operator
+	...
+};
+```
+
+​	新加的这两个函数的生成和行为跟其他的特殊成员函数类似。移动操作仅在需要时生成，如果生成则对类的非静态数据成员执行"成员移动"。这就意味着移动构造和移动赋值运算符都只会移动入参的非静态数据成员。移动构造和移动赋值运算符还会移动基类部分（如果有的话）。
+
+​	当进行移动操作（移动构造或移动赋值）数据成员或者基类时，不能保证实际进行了移动操作。"成员移动"更像是成员的移动请求，因为未启动移动的类型（即，不提供对移动操作的特殊支持，例如，大多数 C++98 遗留类）会通过它们的复制操作实现"移动"。每个成员"移动"的核心是将 std::move 应用于要从中移动的对象，并且根据函数重载的结果来确定应该执行移动还是复制。Item23 详细介绍这个过程。这里只需要记住，在进行移动操作时，支持移动操作的数据成员和基类进行移动操作，但是对不支持移动操作数据成员和基类进行赋值操作。
+
+​	这两个移动操作不是独立的。如果声明一个则会阻止编译器生成另一个。基本原理是，如果为类声明一个移动构造函数则说明我们不希望使用编译器为我们生成的默认成员移动。如果成员移动构造有问题，成员移动赋值操作也可能有问题。因此，***声明移动构造函数会防止移动赋值运算符的生成，而声明移动赋值运算符也会防止编译器生成移动构造函数***。
+
+​	此外，***不会为任何明确声明复制操作的类型生成移动操作***。理由是声明复制操作（构造或赋值）表明复制对象的正常方法（成员复制）不适用于该类，并且编译器认为如果成员复制不适用于复制操作，成员移动可能不适合移动操作。
+
+​	如果在类中声明移动操作（移动构造或移动赋值）会导致编译器禁用复制操作（通过 delete 声明来禁用--item11）。毕竟，如果按成员移动不是对对象的正确方法，则按成员复制也可能不是复制它的正确方法。这听起来可能会破坏 C++98 代码，因为在 C++11 中启用复制操作受到限制的条件比 C++98 中更多，但是并非如此。C++98 代码不能有移动操作，因为在 C++98 中们有"移动"对象这个东西。遗留类可以拥有用户声明的移动操作的唯一方法是，如果他们是为 C++11 添加的，并且被修改以利用移动语义的类必须按照 C++11 规则来生成特殊成员函数。
+
+​	也许你听说过一个被称为三法则的编程规则。三法则规定，如果声明拷贝构造函数、赋值运算符或析构函数中的任何一个，则应该声明所有三个。它源于以下观察：需要接管复制操作的含义几乎总是源于执行某种资源管理的类，并且几乎总是暗示（1）在一个复制操作中进行的任何资源管理可能需要在其他复制操作中完成，并且（2）类析构函数也将参与资源的管理（通常是释放它）。要管理的经典资源是内存，这就是为什么所有管理内存的标准库类（例如，执行动态内存管理的STL容器）都声明"三大"：赋值操作和析构函数。
+
+​	三法则的结果是用户声明的析构函数的存在表明简单的逐成员复制不太可能适合类中的复制操作。也就是说，当声明一个类的析构函数时，应该也自定义复制操作，因为自动生成的复制函数可能满足不了我们的需求。在 C++98 被采用时，用户声明的析构函数的存在对编译器生成复制操作没有影响。C++11 中也是如此，但这仅仅是因为限制生成复制操作的条件会破坏太多遗留代码。
+
+​	然而，三法则背后的推理仍然有效，并且结合观察到复制操作的声明排除了移动操作的隐式生成，激发了C++11当存在自定义析构函数时不为类生成移动操作。
+
+因此仅当以下三点为真时，才会为类（需要时）生成移动操作：
+
+* 类中没有声明复制操作
+* 类中没有声明移动操作
+* 类中没有声明析构函数
+
+​	在某些时候，类似的规则可以扩展到复制操作，因为C++11不赞成为声明复制操作或析构函数的类自动生成复制操作。也就是说如果在声明了析构函数或复制操作的代码中存在依赖于自动生成的复制操作，你应该升级代码取消这种依赖关系。如果编译器生成的函数是正确的（即，如果你想要类的非静态数据成员的成员复制，你需要做的很简单，使用 C++11 的 "=default" 显示表示：
+
+```c++
+class Widget{
+  public:
+    ...
+	~Widget();				// user-declate dctor
+    ...
+	Widget(const Widget&) = default;			// default copy ctor behavior is ok
+    Widget& operator=(const Widget&) = default;	// default copy assign behavior is ok
+    ...
+};
+```
+
+​	多态基类中生命的方法可能会被其派生类调用。多态基类通常拥有虚析构函数，因为如果没有，某些操作（例如，通过基类指针或引用在派生类对象上使用 delete 或 typeid）会产生未定义或误导性的结果。除非一个类继承了一个已经声明虚析构函数的类，否则使析构函数成为虚函数的唯一方法就是显式声明它。通常，默认实现是正确的，"=default" 是表达这一点的好方法。但是，用户声明的析构函数会抑制移动操作的生成，因此如果要支持可移动性，""=default" 通常会找到第二个应用程序。声明移动操作会禁止复制操作，因此如果还需要可复制性，则在使用一轮 "=default" 即可：
+
+```c++
+class Base{
+  public:
+    virtual ~Base() = default;					// make dtor virtual
+    Base(Base&&) = default;						// support moving
+    Base& operator=(Base&&) = default;
+    Base(const Base&) = default;				// support copying
+    Base& operator=(const Base&) = default;
+    ...
+};
+```
+
+​	事实上，即使你有一个编译器愿意生成复制和移动操作的类，并且生成的函数会按照你的意愿运行，你也可以自己使用"=default"声明。这虽然增加了工作量，但是可以更好的体现你的意图，并且可以帮助你避开一些细小的错误。例如，假设一个表示字符串表的类，即允许通过整数 ID 快速查找字符串值的数据结构：
+
+```c++
+class StringTable{
+  public:
+    StringTable(){}
+    ...			// functions for insertion,erasure,lookup,etc.,but
+        		// no copy/move/dctor functionality
+  private:
+    std::map<int, std::string> values;
+};
+```
+
+​	现在未使用用户自定义的复制操作、移动操作和析构操作，使用的都是编译器自动生成的。但是后期有添加了自定义的析构和构造来记录日志：
+
+```c++
+class StringTable{
+  public:
+    StringTable()
+    {
+        makeLogEntry("Creating StringTable object");		// added
+    }
+    ~StringTable()
+    {
+        makeLogEntry("Destroying StringTable object");		// added
+    }
+    
+    ...														// other funcs as before
+        
+  private:
+    std::map<int, std::string> values;						// as before
+};
+```
+
+​	上面的例子看似合理但是产生的副作用就是：它阻止生成移动操作。这个操作却不会影响复制操作的创建，并且代码可以编译、运行并通过功能测试。这里有个隐式的变化就是有关移动操作将会变为复制操作。这将导致我们的程序性能有所下降。
+
+因此，**管理特殊成员函数的C++11规则是**：
+
+* 默认构造函数：与 C++98 相同的规则，仅当类不包含用户声明的构造函数时才生成
+* 析构函数：与 C++98 基本相同，唯一的区别是析构函数默认是 noexcept（参见 item14）。与在 C++98 中一样，仅当基类析构函数为虚函数才为虚函数
+* 复制构造函数：与 C++98 相同的运行是行为：非静态从数据成员的逐成员复制构造。仅在类缺少用户声明复制构造函数时生成。如果类声明移动操作，则复制构造会被声明为 delete。不推荐使用用户声明的复制赋值运算符或析构函数在类中生成此函数。
+* 复制赋值运算符：与 C++98 相同的运行时行为：非静态数据成员的成员复制赋值。仅当类缺少用户声明的复制赋值运算符时才生成。如果类声明移动操作，则会被声明为 delelte。不推荐在具有用户声明的复制构造函数或析构函数的类中生成此函数
+* 移动构造函数和移动赋值运算符：每个都执行非静态数据成员的成员移动。仅当类不包含用户声明的复制操作、移动操作或西沟含苏时生成
+
+请注意，关于成员函数模板存在的规则中没有任何内容组织编译器生成特殊成员函数。这就意味着 Widget 看起来像这样：
+
+```c++
+class Widget{
+	...
+	template<typename T>			// construct Widget from anything
+	Widget(const T& rhs);
+    
+    template<typename T>
+    Widget& operator=(const Widget& rhs);	//assign Widget from anything
+	...
+};
+```
+
+​	编译器仍然会为 Widget 生成复制和移动操作（假设满足控制它们生成的通常条件），即使这些模板可以被实例化以生成复制构造函数和复制赋值运算符。（当 T 是 Widget 时就是这种情况）在所有可能的情况下，这会让你觉得这是一个几乎不值得承认的极端情况，但是我提它是有原因的。Item26 中会讲述产生的严重后果。
+
 **小结**
+
+* 特殊成员函数是指编译器可以自己生成：默认构造函数、析构函数、复制操作和移动操作
+* 移动操作仅为缺少显式声明的移动操作、复制操作和析构函数的类生成
+* 复制构造函数只为缺少显式声明的复制构造函数的类生成，如果声明了移动操作，它会被声明为 delete
+* 复制赋值运算符只为缺少显式声明的复制赋值运算符的类生成，如果声明了移动操作，它将被声明为 delete。不推荐在具有显式声明析构函数的类中使用默认复制操作
+* 成员函数模板不会抑制特殊成员函数的生成
+
+
 
 
 
