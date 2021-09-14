@@ -901,4 +901,4 @@ w1 = std::move(w2);						// move-assign w1
 
 * Pimpl Idiom 通过减少类客户端和类实现之间的编译依赖性来减少构建时间
 * 对于 std::unique_ptr pImpl 指针，在类头文件中声明特殊成员函数，但在实现文件中实现它们。即使默认函数实现是可以接受的，也要这样做
-* 上述建议适用于 std::unique_ptr，但不适用于 std::shared_ptr
+* 上述建议适用于 std::unique_ptr，但不适用于 std::shared_ptr 
