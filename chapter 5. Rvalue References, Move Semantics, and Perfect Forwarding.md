@@ -1408,13 +1408,82 @@ int processVal(int val, int priority);
 f(processVal);					// fine
 ```
 
+诧异不，竟然成功调用。f 求一个指向函数的指针作为它的参数，但 processVal 吧函数指针，甚至不是一个函数，它是两个不同函数的名称。但是，编译器直到它需要哪个 processVal：根据 f 的形参进行匹配。因此编译器会选择接受一个 int 参数的 processVal，并将该函数的地址传递给 f。
 
+​		之所以会这样，是因为 f 的声明让编译器知道需要哪个版本的 processVal。然而，作为函数模板，fwd 没有任何关于它需要什么类型的信息，这使得编译器不能确定应该传递哪个重载：
 
+```c++
+template<typename T>
+T workOnVal(T param)				// template for processing value
+{...}
 
+fwd(workOnVal);						// error! which workOnVla instantiation?
+```
 
+​		让一个完美转发函数（如 fwd）接受重载函数或模板函数的方法是收到那个指定你想要转发的重载或实例化。例如，你可以创建一个与 f 的形参类型相同的函数指针，用 processVal 或 wordOnVal 初始化该指针（从而导致选择 processVal 的正确版本或生成 workOnVal 的正确实例化），并将该指针传递给 fwd：
 
+```c++
+using ProcessFuncType = int(*)(int);		// make typedef see Item9
+
+PocessFuncType processValPtr = processVal;	// specify needed signature for processVal
+
+fwd(processValPtr);							// fine
+
+fwd(static_cast<ProcessFuncType>(workOnVal));	// also fine
+```
+
+​		当然这需要你知道 fwd 要转发到的函数指针的类型。但是不能保证转发函数对此进行记录，毕竟，完美转发函数被设计为接受任何东西，如果没有文档告诉你传递什么，那就完犊子了。
+
+***<u>位域</u>***
+
+​		wa你没转发的最后一种失败情况是将*位域*用作函数参数。为了了解在实践中使用的情况，我们来观察一下 IPv4 头的建模：
+
+```c++
+struct IPv4Header{
+	std::unit32_t version:4,
+    				IHL:4,
+    				DSCP:6,
+    				ECN:2,
+    				totalLength:16;
+    ...
+};
+```
+
+​		如果函数 f 被声明为接受 std::size_t 参数，然后调用它，使用 IPv4Header 对象的 totalLengh 字段编译不会有问题：
+
+```c++
+void f(std::size_t sz);				// function to call
+IPv4Header h;
+...
+f(h.totalLength);					// fine
+```
+
+​		然而，试图通 fwd 将 h.titalLength 转发到 f 却是做了不同的事儿：
+
+```c++
+fwd(h.totalLength);					// error!
+```
+
+​		问题是 fwd 的参数是一个引用，而 h.totalLength 是一个非 const 位域。这看起来不是很糟糕，但是 C++ 标准禁止这种组合："非 const 引用不应绑定到位域"。这种禁用行为完全可以理解，位域可以由机器字的任意部分组成（例如，32位整数的3-5位），但是没办法直接处理这些东西。之前提到的引用和指针在硬件级别是一样的，没有办法创建一个指针指向任意比特（c++ 规定最小的单位是字节），没有办法将引用绑定到任意位。
+
+​		解决完美转发位域的这个情况也很容易，因为任何接受位域作为参数的函数都是收到位域值的副本。毕竟，没有函数可以绑定到位域的引用，也没有函数可以接受位域的指针，因为指向位域的指针不存在。可以传递位域的唯一类型形参就是值形参。在按值传递的情况下，被调用的函数显然会收到位域值的副本，结果证明在常量引用参数的情况下，标准要求引用实际上绑定到一个位域值的副本，该值存储在某个标准整数类型（例如，int）的对象中。对 const 的引用不绑定到位域，它们绑定到位域的值已经复制到其中的"普通"对象。
+
+​		将位域传递到完美转发函数的关键是利用这样一个事实，即转发到的函数总是会收到一个位域值的副本。因此，你可以自己创建一个副本，并使用副本调用转发函数。在 IPv4Header 的中代码实现如下：
+
+```c++
+// copy bitfield value; see Item 6 for info on init. form
+auto length = static_cast<std::uint16_t>(h.totalLength);
+fwd(length);			// forward the copy
+```
+
+***<u>总结</u>***
+
+​		在大多数情况下，完美转发的工作方式和预期的一样。你几乎不用过多考虑。但是，当它无法工作时---看起来合理的代码无法编译，或者更糟糕的是，编译后的行为和预期的不一致-----了解完美转发缺陷就很重要。同样也必须了解如何解决这些问题。在大多数情况下，这很简单。
 
    **小结**
+
+* 当模板类型推到失败或推导出错类型时，完美转发失败
+* 导致完美转发失败的参数类型是大括号初始化、使用0或NULL 作为空指针使用、只声明 static const 静态数据成员未定义、模板和重载函数名、位域
 
 
 
