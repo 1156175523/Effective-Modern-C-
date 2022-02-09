@@ -8,9 +8,9 @@
 
 #### *item1 模板类型推导*
 
-​	一个复杂系统的用户不知道它是如何运作的，但是依然对它的作用感到满意，这诠释了一些涉及理念。C++模板类型推导通过这种设计理念获得了巨大成功。数以百万的程序员即使很难给出更多关于如何推导出这些函数使用的类型的推导，通过给模板函数传参也能获得满意的结果。(不懂但是会用)
+​	一个复杂系统的用户不知道它是如何运作的，但是依然对它的作用感到满意，这诠释了一些设计理念。C++模板类型推导通过这种设计理念获得了巨大成功。数以百万的程序员即使很难给出更多关于如何推导出这些函数使用的类型的推导，通过给模板函数传参也能获得满意的结果。(不懂但是会用)
 
-​	如果你是其中一员的话，我这里有一个好消息一个坏消息。好消息是模板的类型推导是现代C++最引人注目的基础功能之一，特性：auto.如果你感觉C++98推到模板类型的方式还不错，那么你对C++如何推导auto类型也很满意(推导规则一样)。坏消息是当盲板类型推导应用到auto的上下文时，有时看起来不如将他们应用于模板直观。因此，真正理解由auto创建的模板类型推导尤为重要。本项包含了你需要了解的内容。
+​	如果你是其中一员的话，我这里有一个好消息一个坏消息。好消息是模板的类型推导是现代C++最引人注目的基础功能之一，特性：auto.如果你感觉C++98推到模板类型的方式还不错，那么你对C++如何推导auto类型也很满意(推导规则一样)。坏消息是当模  板类型推导应用到auto的上下文时，有时看起来不如将他们应用于模板直观。因此，真正理解由auto创建的模板类型推导尤为重要。本项包含了你需要了解的内容。
 
 ​	我们忽略一部分伪代码看看下面的例子，我们可以将函数模板视为如下：
 
@@ -36,7 +36,7 @@ f(x);
 
 ​	很容易理解T和函数参数类型被推导为相同类型。即T是 expr 的类型。上面的例子就是这个情况：x是int，然后T被推导为int。但不总是这样。推导出T的不仅取决于 expr 的类型，还取决于 ParamType 的形式。有以下三个情况：
 
-* ParamType 是一个指针或者引用类型，但不是一个通用引用。(通用引用将会在 item24 中介绍。这里你只需要 知道的是它们存在并且它们不同于左值引用和右值引用)
+* ParamType 是一个指针或者引用类型，但不是一个通用引用。(通用引用将会在 item24 中介绍。这里你只需要知道的是它们存在并且它们不同于左值引用和右值引用)
 
 * ParamType 是一个通用指针
 
@@ -161,7 +161,7 @@ f(x);
   ​	这就意味之 param 将是入参的一个副本---一个全新的对象。新对象 param 侧面反映了 expr 是如何推导出T的：
 
    	1. 如果expr的类型是引用，则忽略引用部分
-   	2. 如果在忽略expr的饮用后，expr是const，也会忽略const。如果是volatile，同样会被忽略。（volatile 对象并不常见，他们通常仅用于实现设备驱动程序。item40 将会详细介绍）
+   	2. 如果在忽略expr的引用后，expr是const，也会忽略const。如果是volatile，同样会被忽略。（volatile 对象并不常见，他们通常仅用于实现设备驱动程序。item40 将会详细介绍）
   
   下面来看示例：
   
@@ -182,7 +182,7 @@ f(x);
   ```c++
   template<typename T>
   void f(T param);                   // param is still passed by value
-  const char* const str = "good";    //ptr is const pointer to const object
+  const char* const ptr = "good";    //ptr is const pointer to const object
   f(ptr);							   // pass arg of type const char* const
   ```
 
@@ -192,7 +192,7 @@ f(x);
 
   #####   ***数组参数***
 
-  ​	上面讲述的内容几乎涵盖主流模板推导，但是还有部分少数案例需要了解。虽然数组和指针有时似乎可以选关乎转换，但是数组和指针类型不同。造成这种错觉的一个主要原因是在许多情况下，数组会退化为指向其第一个元素的指针，如下可通过编译的代码：
+  ​	上面讲述的内容几乎涵盖主流模板推导，但是还有部分少数案例需要了解。虽然数组和指针有时似乎可以相互转换，但是数组和指针类型不同。造成这种错觉的一个主要原因是在许多情况下，数组会退化为指向其第一个元素的指针，如下可通过编译的代码：
 
   ```c++
   const char name[] = "good boy"; // name's type is const char[9]
@@ -219,7 +219,7 @@ f(x);
   void myFunc(int * param);
   ```
 
-  ​	数组参数和指针参数的这种等价性可能会导致我们 认为数组和指针类型相同。因为数组参数生命是被视为指针类型声明，所以按值传递给模板的数组类型被推导为指针类型。这就意味着在对模板f的调用中，参数类型T被推导为const char*。
+  ​	数组参数和指针参数的这种等价性可能会导致我们认为数组和指针类型相同。因为数组参数声明是被视为指针类型声明，所以按值传递给模板的数组类型被推导为指针类型。这就意味着在对模板f的调用中，参数类型T被推导为const char*。
 
   ​	虽然函数不能声明真正的数组参数，但是可以声明数组引用的参数。我们可以修改模板函数f 通过引用获取其参数：
 
@@ -242,7 +242,7 @@ f(x);
   }
   ```
   
-  ​	在 item15 中会讲到, 函数声明带 constexpr 时期结果可用在编译过程中。这使得可以声明一个和第二个数组具有相同数量的数组，第二个数组的大小是花括号初始化算来的：
+  ​	在 item15 中会讲到, 函数声明带 constexpr 时其结果可用在编译过程中。这使得可以声明一个和第二个数组具有相同数量的数组，第二个数组的大小是花括号初始化算来的：
   
   ```c++
   int keyValues[] = {1, 3, 7, 9, 11, 22, 35};	// keyValues has 7 elements
@@ -255,7 +255,7 @@ f(x);
   std::array <int, arraySize(keyVals)> mappedVals;		// mappedVal's size is 7
   ```
 
-  ​		关于 arraySize 被声明为 noexcept ，是为了帮助编译器生成更好的代码。有关像信息请参看item14。
+  ​		关于 arraySize 被声明为 noexcept ，是为了帮助编译器生成更好的代码。有关信息请参看item14。
 
   ---
 
@@ -280,7 +280,7 @@ f(x);
   ​	**注意事项**：
 
   	*	在模板类型推导期间，作为引用的参数被视为非引用，即它们的引用被忽略
-  	*	在推到通用引用参数时，佐治参数得特殊处理
+  	*	在推到通用引用参数时，左值参数得特殊处理
   	*	在推导值传递的参数时，const ，volatile 参数被视为非 const 和 非 volatile
   	*	在模板类型推导期间，数组或函数名称的参数会退化为指针，除非他们用于初始化引用
   
@@ -322,7 +322,7 @@ f(x);
   func_for_cx(x);					 // conceptual call: param's deduced type is cx's type
   
   template <typename T>
-  vpid func_for_rx(const T& param);// conceptual template for deducing rx's type
+  void func_for_rx(const T& param);// conceptual template for deducing rx's type
   func_for_rx(x);					 // conceptual call: param's deduced type is rx's type
   ```
   
@@ -391,7 +391,7 @@ f(x);
   auto x5 = {1, 2, 3.0};	// error! can't deduce T for std::initializer_list<T>
   ```
   
-  ​	上例中因为 x5 使用 auto 初始化所以是使用 std::initializer_list<T> 来推导类型，但是大括号内的类型有两种无法推导出统一的类型，最终导致推到失败。***auto 的这种花括号初始化方式是唯一不同与模板推导的地方***。但是用 auto 声明变量使用了花括号时推导类型是 std::initializer_list<T> 的实例。但是如果给对应模板传入相同的初始化器（花括号数据），推到将失败，代码会报错：
+  ​	上例中因为 x5 使用 auto 初始化所以是使用 std::initializer_list<T> 来推导类型，但是大括号内的类型有两种无法推导出统一的类型，最终导致推到失败。***auto 的这种花括号初始化方式是唯一不同与模板推导的地方***。用 auto 声明变量使用了花括号时推导类型是 std::initializer_list<T> ，但是如果给对应模板传入相同的初始化器（花括号数据），推到将失败，代码会报错：
   
   ```c++
   auto x = {11, 23, 9};  //x's type is std::initializer_list<int>
@@ -409,7 +409,7 @@ f(x);
   f({11,23,9});  // T deduced as in, and initList's type is std::initializer_list<int>
   ```
   
-  ​	以上也是 C++11 编程中的一个陷阱，当声明其他类型时意外声明了 std::initializer_list 变量。C++14 允许 auto 指示应该推导出函数的返回类型（见 item3），并且 C++14 lambdas 可以在参数中使用 auto。但是 auto 的这些用途使用模板类型推导，而不是 auto 类型推导。因此，返回类型为 auto，且返回花括号初始化器的函数将无法编译：
+  ​	以上也是 C++11 编程中的一个陷阱，当声明其他类型时意外声明了 std::initializer_list 变量。C++14 允许 auto 表示函数推导出的返回类型（见 item3），并且 C++14 中 lambda 表达式可以在参数中使用 auto。但是 auto 的这些用途使用的是模板类型推导，而不是 auto 类型推导。因此，返回类型为 auto，且返回花括号初始化器的函数将无法编译：
   
   ```c++
   auto createInitiList()
@@ -431,8 +431,8 @@ f(x);
   
   ***小结：***
   
-  * auto 类型推导通常跟模板类型推到相同，但是自动类型赋值花括号初始化时表示 std::initializer_list，但是模板推导不通。
-  * 函数返回类型或 lambda 参数中的 auto 意味着模板类型推导，而不是 auto 类型推导。
+  * auto 类型推导通常跟模板类型推到相同，但是自动类型赋值花括号初始化时表示 std::initializer_list，但是模板推导编译不通过。
+  * 函数返回类型或 lambda 参数中的 auto 表示模板类型推导，而不是 auto 类型推导。
   
   -----
   
@@ -496,7 +496,7 @@ f(x);
   ```c++
   std::deque<int> d;
   ...
-  authAndAccess(d, 5) = 10; // authendticate user, return d[5], then assign 10 to 							  // it,thiswon't complie!
+  authAndAccess(d, 5) = 10; // authendticate user, return d[5], then assign 10 to 							  // it,this won't complie!
   ```
   
   ​	这里，d[5] 返回一个 int&，但是 authAndAccess 的 auto 返回类型推导将会剥离引用，从而产生一个 int 返回类型。作为函数返回值的 int 是一个右值，因此上面的代码尝试将 10 赋值给一个右值 int，这在 C++11 中是被禁止的，所以编译不同。
@@ -545,7 +545,7 @@ f(x);
   auto s = authAndAccess(makeStringDeque(), 5);
   ```
   
-  ​	支持以上这些功能意味着我们需要修改 authAndAccess 的声明以接受左值和右值。声明一个左值引用参数，另一个声明右值引用参数可以完美解决，但是我们就得维护两个函数。为了避免这种情况我们可以让 authAndAccess 绑定一个左值和右值的引用参数，就是 item24 中讲解的通用引用。因此可以这样声明authAndAccess:
+  ​	支持以上这些功能意味着我们需要修改 authAndAccess 的声明以便接受左值和右值。重载声明一个左值引用参数，一个声明右值引用参数可以完美解决，但是我们就得维护两个函数。为了避免这种情况，但是又允许authAndAccess 既可以绑定一个左值又可以绑定右值，就需要使用 item24 中讲解的通用引用。因此可以这样声明authAndAccess:
   
   ```c++
   template <typename Container, typename Index> 			// c is now a 
@@ -579,7 +579,7 @@ f(x);
   
   ​	要完全理解 decltype 的行为，还必须熟悉部分特殊情况。其中大部分的内容都太晦涩难懂，无法在书中去描述讨论，为此我们观察其中一个来深入了解 decltype 及其用法。
   
-  ​	将 decltype 应用于名称会产生该名称的声明类型。名称是左值表达式，但是不会影响 decltype 的行为。左值表达式比名称要复杂，decltype 推导的类型始终是左值引用。也就是，如果除名称之外的左值表达式具有类型 T，则 decltype 将该类型推导为 T&。这很少有影响，因为大多数左值表达式的类型固有的包含左值引用限定符。例如，返回左值的函数总是返回左值引用。
+  ​	将 decltype 应用于 "名称" 会产生该名称的声明类型。如果 "名称" 是左值表达式，也不会影响 decltype 的行为。左值表达式比单纯的变量名称要复杂，decltype 推导的类型始终是左值引用。也就是说，如果推导的不是单纯的变量名称而是左值表达式，则 decltype 将该类型推导为 T&。这也不会有啥大影响，因为大多数左值表达式的类型固有的包含左值引用限定符。例如，返回左值的函数总是返回左值引用。
   
   ​	这里有个值得关注的点，如下：
   
@@ -610,7 +610,7 @@ f(x);
   **小结：**
   
   * decltype 几乎总是能正确推导除变量或表达式的类型
-  * 对于除变量名意外的 T 类型左值表达式，decltype 推导类型为 T&
+  * 对于除变量名以外的 T 类型左值表达式，decltype 推导类型为 T&
   * C++14 支持 decltype(auto) 同时使用，它同 auto 一样，从初始值中推导出类型，但是它使用 decltype的推导规则
   
   ----
