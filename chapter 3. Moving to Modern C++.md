@@ -18,7 +18,7 @@ int z{0};		// initializer is in braces
 int z = {0};
 ```
 
-​	这里我们忽略同时使用等号和大括号的语法，因为 C++ 通常将其视为仅用大括号的版本。初始化的标志经常误导新手认为赋值正在发生，但其实并不是。对于像 int 这类内置类型，区别是学术性的（？？？？不太懂这个翻译），但是对于用户自定义的类型，区别初始化和赋值很重要，因为涉及不同的函数调用：
+​	这里我们忽略同时使用等号和大括号的语法，因为 C++ 通常将其视为仅用大括号的版本。初始化的标志经常误导新手认为赋值正在发生，但其实并不是。对于像 int 这类内置类型，区别不大，但是对于用户自定义的类型，区别初始化和赋值很重要，因为涉及不同的函数调用：
 
 ```c++
 Widget w1;		// call default constructor
@@ -54,7 +54,7 @@ std::atomic<int> ai2(0);		// fine
 std::atomic<int> ai3 = 0;		// error!
 ```
 
-​	因此很容易理解为什么花括号初始化被称为"统一"。在 C++ 的三种初始化表达式中，只有花括号是可以用于所有地儿的。花括号初始化的一个新特性是它禁止内置类型之间的隐式转换。如果花括号中的表达式的值不能保证与初始化对象的类型相同，则代码编译不过：
+​	因此很容易理解为什么花括号初始化被称为"统一"。在 C++ 的三种初始化表达式中，只有花括号是可以用于所有地儿的。**花括号初始化的一个新特性是它禁止内置类型之间的隐式转换**。如果花括号中的表达式的值不能保证与初始化对象的类型相同，则代码编译不过：
 
 ```c++
 double x,y,z;
@@ -75,7 +75,7 @@ int sum3 = x + y + z;	// ditto
 Widget w1(10);		// call Widget ctor with argument 10
 ```
 
-​	上面的初始化没有问题，但是如果你想尝试使用类似的语法调用一个带有零参数的Widget构造函数，那你其实是声明了一个函数而不是一个对象：
+​	上面的初始化没有问题，但是如果你想尝试使用类似的语法调用一个没有参数的Widget构造函数，那你其实是声明了一个函数而不是一个对象：
 
 ```c++
 Widget w2();		// monst vexing parse! declares a function named w2 that returns a 						// Widget
@@ -87,7 +87,7 @@ Widget w2();		// monst vexing parse! declares a function named w2 that returns a
 Widget w3{};		// calss Widget ctor no args
 ```
 
-​	上面个讲述了花括号在上下文中应用最广泛，可以防止隐式类型转换，还可以避免C++的解析影响。这么多好处为啥我们直接都是用花括号呐？花括号的缺点是它有时一些令人惊讶的行为。这种行为源于花括号、std::initializer_list 和构造函数重载解析之间异常纠结的关系。他们的交互可能导致代码看起来应该做一件事，但实际上做另外一件事。例如，Item2 解释了当自动变量具有花括号初始化时，推导类型是 std::initializer_list，即使使用相同初始化器声明变量的其他方式会产生更直观的类型。因此，你越喜欢使用 auto，你可能不太可能使用花括号初始化。
+​	上面讲述了**花括号在上下文中应用最广泛，可以防止隐式类型转换，还可以避免C++的解析**影响。这么多好处为啥我们不直接都使用花括号呐？花括号的缺点是它有时会存在一些令人惊讶的行为。这种行为源于**花括号、std::initializer_list 和构造函数重载解析之间异常纠结的关系**。他们的交互可能导致代码看起来应该做一件事，但实际上做另外一件事。例如，Item2 解释了当自动变量具有花括号初始化时，推导类型是 std::initializer_list，即使使用相同初始化器声明变量的其他方式会产生更直观的类型。因此，你越喜欢使用 auto，你可能不太可能使用花括号初始化。
 
 ​	在构造函数调用中，只要不涉及 std::initializer_list 参数，括号和花括号就具有相同的含义:
 
@@ -116,7 +116,7 @@ class Widget{
 };
 ```
 
-​	Widget w2 和 w4 将会调用新加的构造函数，即使参数是 std::initializer_list<long, double>  与非 std：：initializer_list 构造函数相比匹配更差！再看：
+​	Widget w2 和 w4 将会调用新加的构造函数，即使参数是非 std::initializer_list<long, double>  的精确匹配调用的还是 std::initializer_list 构造函数！再看：
 
 ```c++
 Widget w1(10, true);		// uses parens and, as before, calls firest ctor
@@ -137,7 +137,7 @@ class Widget{
 public:    
   Widget(int i, bool b);		// as before
   Widget(int i, double d);		// as before
-  Widget(std:;initializer_list<long, double> il);	// as before
+  Widget(std::initializer_list<long, double> il);	// as before
   operator float() const;		// convert to float
   ...
 };
@@ -160,15 +160,15 @@ class Widget{
     Widget(int i, bool b);		// as before
     Widget(int i, double d);	// as before
     Widget(std::initializer_list<bool> il);	// element type is now bool
-    ...							// no implicit conversion funcs
+    ...										// no implicit conversion funcs
 };
 
 Widget w{10, 5.0};		// error! requires narrowing conversions
 ```
 
-​	在这个例子中使用花括号前两个构造函数回避忽略，即使第二个构造函数完全匹配，但是编译器还是会调用 std::initializer_list 参数的构造函数。之后会尝试将 int(10) 和 double(5.0) 转换为 bool，但是这个无法实现，所以代码会编译不过。
+​	在这个例子中使用花括号前两个构造函数会被忽略，即使第二个构造函数完全匹配，但是编译器还是会调用 std::initializer_list 参数的构造函数。之后会尝试将 int(10) 和 double(5.0) 转换为 bool，但是这个无法实现，所以代码会编译不过。
 
-​	只有当无法将花括号初始化表达式中的参数类型转换为 std::initializer_list 中的类型时，编译器才会回调用正常的重载。例如，如果我们将 std::initializer_list<bool> 构造函数替换为采用 std::initializer_list<std:string> 的构造函数，则非 std::initializer_list 构造函数才会被调用，因为无法将 int 和 bool 转换为 std::string ：
+​	只有当无法将花括号初始化表达式中的参数类型转换为 std::initializer_list 中的类型时，编译器才会回调用正常的重载。例如，如果我们将 std::initializer_list<bool> 构造函数替换为采用 std::initializer_list\<std:string> 的构造函数，则非 std::initializer_list 构造函数才会被调用，因为无法将 int 和 bool 转换为 std::string ：
 
 ```c++
 class Widget{
@@ -217,7 +217,7 @@ std::vector<int>  v2{10, 20};	// use std::initializer_list ctor: create 2-elemen
 								// std::vector, element values are 10 and 20
 ```
 
-​	总而言之，第一点，在添加 std::initializer_list 重载接口时需要谨慎。第二点，使用这类重载是需要了解其原理。再来看另外一个例子，假如你想从任意数量参数来创建任意类型的对象，可变参数模板可以方便实现：
+​	总而言之，第一点，在添加 std::initializer_list 重载接口时需要谨慎。第二点，使用这类重载时需要了解其原理。再来看另外一个例子，假如你想从任意数量参数来创建任意类型的对象，可变参数模板可以方便实现：
 
 ```c++
 template<typename T, typename... Ts>
@@ -256,7 +256,7 @@ doSomeWork<std::vector<int>>(10, 20);
 
 #### *item 8. 尽量使用 nullptr 而不是 0 和 NULL*
 
-​	从字面看：0是一个int，而不是一个指针。如果C++发现自己在只能使用指针的上下文使用0，它会勉强将0理解为空指针，但这只是备用选择。C++的主要策率规则是将0理解为int，而非指针。NULL是整形也非int，所以这里重点强调0和NULL非指针类型。在 C++98 中，这意味着重载指针和证书可能会导致意外，将0 或 NULL 传递给此类重载从未称为指针重载：
+​	从字面看：0是一个int，而不是一个指针。如果C++发现自己在只能使用指针的上下文使用0，它会勉强将0理解为空指针，但这只是备用选择。C++的主要策率规则是将0理解为int，而非指针。NULL是整形也非int，所以这里重点强调0和NULL非指针类型。在 C++98 中，这意味着重载指针和整数可能会导致意外，将0 或 NULL 传递给此类重载从未称为指针重载：
 
 ```c++
 void f(int);	// there overload f
@@ -290,7 +290,7 @@ if (result == nullptr)
 }
 ```
 
-​	这两部分代码对比我们会发现使用 nullptr 会更加直观的阅读代码含义是返回指针类型数据。这个情况在函数模板使用中会体现的更加明显，假设你有一些函数只有获取锁后才会被调用，每个函数的指针类型不同：
+​	这两部分代码对比我们会发现使用 nullptr 会更加直观地表现出代码含义是返回指针类型数据。这个情况在函数模板使用中会体现的更加明显，假设你有一些函数只有获取锁后才会被调用，每个函数的指针类型不同：
 
 ```c++
 int f1(std::shared_ptr<Widget> spw);	// call these only when the appropriate mutex is 
@@ -384,7 +384,7 @@ typedef void (*FP) (int, const std::string);		// typedef
 using FP = void(*)(int, const std::string);			// alias decaration
 ```
 
-​	这时你会疑问既然他们的功能相同，那我该如何选择呐？当然是有选择规则的，在使用模板时，别名可以被模板化（这种情况下被称为别名模板），而 typedef 不能。所以 C++11 可以直接使用别名表示模板，typedef 则必须嵌套在模板内。例如，使用自定义分配器 MyAlloc 的链表：
+​	这时你会疑问既然他们的功能相同，那我该如何选择呐？当然是有选择规则的，在使用模板时，别名可以被模板化（这种情况下被称为别名模板），而 typedef 不能。所以 **C++11 可以直接使用别名表示模板，typedef 则必须嵌套在模板内**。例如，使用自定义分配器 MyAlloc 的链表：
 
 ```c++
 /// using alias
@@ -400,7 +400,7 @@ struct MyAllocList{								// is synonym for
 MyAllocList<Widget>::type lw;					// client code
 ```
 
-​	如果在模板内使用 typedef 定义的 list 类型并这个 list 类型依赖模板参数，这个时候情况会变得更糟，因为必须在 typedef 定义的类型前添加  typename:
+​	如果在模板内使用 typedef 定义的 list 类型并且这个 list 类型**依赖模板参数**，这个时候情况会变得更糟，因为**必须在 typedef 定义的类型前添加  typename**:
 
 ```c++
 template<typename T>
@@ -424,7 +424,7 @@ class Widget{
 };
 ```
 
-​	在你看来，使用 using 定义的别名 MyAllocList<T> 看起来和 typedef 定义的 MyAllocList<T>::type 一样依赖模板参数 T。但是编译器在处理 Widget 模板时，遇到 using 定义的别名模板 MyAllocList<T> 时知道 MyAllocList<T> 是一个类型名称，因为 MyAllocList 是一个别名模板：它必须命名一个类型。MyAllocList<T> 因此是一个非以来类型，并且既不需要也不允许使用类型说明符。当编译器遇到 typedef 定义的 MyAllocList<T> 时，它无法确定这是命名了一个类型，因为这可能是 MyAllocList 的特化（如果没使用 typename 的话）。再观察如下例子：
+​	在你看来，使用 using 定义的别名 MyAllocList<T> 看起来和 typedef 定义的 MyAllocList<T>::type 一样依赖模板参数 T。但是**编译器在处理 Widget 模板时，遇到 using 定义的别名模板 MyAllocList<T> 时知道 MyAllocList<T> 是一个类型名称，因为 MyAllocList 是一个别名模板：它必须命名一个类型。MyAllocList<T> 因此是一个非依赖类型，并且既不需要也不允许使用类型说明符。当编译器遇到 typedef 定义的 MyAllocList<T> 时，它无法确定这是命名了一个类型，因为这可能是 MyAllocList 的特化（如果没使用 typename 的话）**。再观察如下例子：
 
 ```C++
 class Wine{...};
@@ -592,7 +592,7 @@ enum class Status;		// 潜在类型是 int
 enum class Status: std::uint32_t;	// Status 潜在类型是std::unint32_t
 ```
 
-为了给没有作用域的枚举体指定潜在类型，你需要做相同的事情，结果可能是前置声明：
+针对没有作用域的枚举体（普通的枚举）指定潜在类型，你需要做相同的事情，结果可能是前置声明：
 
 ```c++
 enum Color: std::uint_8;		// 没用定义体的枚举的前置声明，潜在类型是 std::uint8_t
@@ -694,9 +694,9 @@ auto val std::get<toUType(UserInfoFields::uiEmail)>(uInfo);
 
 #### *Item 11. 优先使用 delete 关键字删除函数而不是使用 private 修饰但不实现函数*
 
-​	如果向其他人员提供代码但是不希望他们调用部分代码，通常不提供相关声明即可。但 C++ 会自动声明部分函数，如果阻止客户端调用这些函数就很麻烦了。这种情况只出现在"特殊成员函数"中，即C++在需要时自动生成的成员函数。item17 会详细讨论这些函数，这里我们只介绍拷贝构造和赋值构造。这一章主要介绍C++11对C++98进行优化的部分，在C++98中一般就是仅用拷贝构造或者赋值构造（或者两个都仅用）。
+​	如果向其他人员提供代码但是不希望他们调用部分代码，通常不提供相关声明即可。但 C++ 会自动声明部分函数，如果阻止客户端调用这些函数就很麻烦了。这种情况只出现在"特殊成员函数"中，即C++在需要时自动生成的成员函数。item17 会详细讨论这些函数，这里我们只介绍拷贝构造和赋值构造。这一章主要介绍C++11对C++98进行优化的部分，在C++98中一般就是仅用拷贝构造或者赋值构造（或者两个都禁用）。
 
-​	C++98仅用的方法是将这些函数声明为私有成员并不进行定义。例如，C++标准库中 iostream 的继承关系中基类是 basic_ios。所有 istream 和 ostream 类都是直接或间接继承它。复制 istream 和 ostream 是不可取的，因为不清楚这些操作该做什么。例如，一个 istream 对象表示一个输入流，其中一些可能已经被读取，而其中一些可能会在以后被读取。如果要复制 istream，是否需要复制所有以读取的值以及将要读取的所有值？处理此类问题的最简单方法是将他们定义为不存在。禁止复制流就是这么做的。为了使 istream 和 ostream 类不可复制，在C++98中指定了 basic_ios 如下：
+​	C++98仅用的方法是将这些函数声明为私有成员并不进行定义。例如，C++标准库中 iostream 的继承关系中基类是 basic_ios。所有 istream 和 ostream 类都是直接或间接继承它。复制 istream 和 ostream 是不可取的，因为不清楚这些操作该做什么。例如，一个 istream 对象表示一个输入流，其中一些可能已经被读取，而其中一些可能会在以后被读取。如果要复制 istream，是否需要复制所有以读取的值以及将要读取的所有值？处理此类问题的最简单方法是将他们定义为不存在，禁止复制流就是这么做。为了使 istream 和 ostream 类不可复制，在C++98中指定了 basic_ios 如下：
 
 ```c++
 template<class charT, class traits = char_traits<charT> >
@@ -724,7 +724,7 @@ class basic_ios: public ios_base{
 
 ​	delete函数不能以任何方式使用，因此成员函数和友元函数代码中，如果尝试调用这些函数将无法编译。这是对 C++98 的改进，C++98 这些不当使用直到链接时才会被诊断出来。
 
-​	通常 delete 的函数被声明为共有属性。这是因为当客户端代码尝试使用成员函数时，C++ 会先价差删除状态。当客户端代码尝试使用已 delete 的私有成员函数时，编译器会报错函数为私有成员，即使该函数的可访问性并不会真正影响她是否可以使用（也就是错误转移了）。
+​	通常 delete 的函数被声明为共有属性。这是因为当客户端代码尝试使用成员函数时，C++ 会先检查删除状态。当客户端代码尝试使用已 delete 的私有成员函数时，编译器会报错函数为私有成员，即使该函数可访问属性并不会影响它是否可以使用（也就是错误转移了）。
 
 ​	delete 函数的一个重要优点是可以 delete 任何函数，例如，假设我们有一个非成员函数，它接受一个整数并返回它是否是幸运数字：
 
@@ -732,7 +732,7 @@ class basic_ios: public ios_base{
 bool isLucky(int number);
 ```
 
-​	C++ 继承了 C 中类型隐形转换特性，但是有些可编译的类型转换调用毫无意义：
+​	C++ 继承了 C 中类型隐形转换特性，所以会存在一些可以编译通过的隐式类型转换调用，如下，但是没有任何意义：
 
 ```c++
 if (isLucky('a')) ...		// is 'a' a lucky number?
@@ -860,7 +860,7 @@ upb->doWork();						// call doWork through base class ptr; derived
 
 这些都是C++98的规范，C++11又新增了一个：
 
-* 函数的引用限定符必须相同。它可以将成员函数的使用限制为仅为左值或仅为右值。成员函数不需要是虚拟的才使用：
+* 函数的引用限定符必须相同。它可以**将成员函数的使用限制为对象本身(*this)仅为左值或仅为右值**。成员函数不是虚函数也可以使用：
 
 ```c++
 class Widget{
@@ -877,7 +877,7 @@ w.doWork();				// calls Widget::doWork for lvalues (i.e.,Widget::doWork&)
 makeWidget().doWorkd();	// calss Widget::doWork for rvalues (i.e.,Widget::doWork&&)
 ```
 
-​	稍后详细介绍带引用限定符的成函数，这里主要说明，如果基类的虚函数带引用限定符，则该派生类必须也带引用限定符。如果没有，声明的函数只存在于派生类，不会覆盖基类。
+​	稍后详细介绍带引用限定符的成函数，这里主要说明，如果**基类的虚函数带引用限定符，则该派生类必须也带引用限定符**。如果没有，声明的函数只存在于派生类，不会覆盖基类。
 
 ```c++
 class Base{
@@ -909,7 +909,7 @@ class Derived: public Base{
 };
 ```
 
-​	C++11 在之前已有的关键字基础上添加了两个上下文关键字，override 和 final。这些关键具有保留的特征，但是仅限于某些上下文。在"覆盖"的情况下，只有当它出现在成员函数声明的末尾时，它才具有意义。如果有已经使用名称 override 名称的代码可以保留，也没问题：
+​	**C++11 在之前已有的关键字基础上添加了两个上下文关键字，override 和 final**。新增的这些关键具有"保留特性"，仅在某些上下文生效。针对 override 关键字，只有当它出现在成员函数声明的末尾时，它才具有意义。也就是说如果有已经使用名称 override 名称的代码可以保留，也没问题：
 
 ```c++
 class Waring{				// potential legacy class from c++98
@@ -950,7 +950,7 @@ Widget w;
 auto vals1 = w.data();				// copy w.values into vals1
 
 Widget makeWidget();
-auto vals2 = makeWidget().data();	// copyt values inside the Widget into vals2
+auto vals2 = makeWidget().data();	// copy values inside the Widget into vals2
 
 // 以上都是会存在调用拷贝构造的情况，如何避免，看如下
 class Widget{
@@ -984,7 +984,7 @@ auto vals2 = makeWidget().data();	// calls rvalue overload for Widget::data,
 
 #### ***Item 13. 使用 const_iterator 而不是 iterator***
 
-​	const_iterator 是指针常量的 STL 等价物（只想不可修改的值）。在无需修改迭代器指向内容时尽可能使用 const_iterator，对于 C++98 和 C++11 都是如此。但在 C++98 中，对 const_iterator 的支持并不是太好。创建也不容易，而且使用它的方式也受到限制。例如，假设我们要在 std::vector<int> 中搜索第一次出现的1983，然后在这个地方插入1998。如果 vector 中没有1983，则在末尾插入。C++98 中使用迭代器很容易实现 ：
+​	const_iterator 是指针常量的 STL 等价物（指向不想修改的值）。在无需修改迭代器指向内容时尽可能使用 const_iterator，对于 C++98 和 C++11 都是如此。但在 C++98 中，对 const_iterator 的支持并不是太好。创建也不容易，而且使用它的方式也受到限制。例如，假设我们要在 std::vector<int> 中搜索第一次出现的1983，然后在这个地方插入1998。如果 vector 中没有1983，则在末尾插入。C++98 中使用迭代器很容易实现 ：
 
 ```c++
 std::vector<int> values;
@@ -997,7 +997,7 @@ values.insert(it, 1998);
 
 ```c++
 typedef std::vector<int>::iterator IterT;
-typedef std::vector<int>const_iterator ConstIterT;	// typedef
+typedef std::vector<int>::const_iterator ConstIterT;	// typedef
 std::vector<int> values;
 ...
 ConstIterT ci =
@@ -1060,9 +1060,9 @@ auto = cbegin(const C& container)-> decltype(std::begin(container))
 
 ----
 
-#### ***Item 14. 如果函数无异常则生命 noexcept***
+#### ***Item 14. 如果函数无异常则声明 noexcept***
 
-​	**C++98中的异常规范**：throw 关键字除了可以用在函数体中抛出异常，还可以用在函数头和函数体之间，指明当前函数能够抛出的异常类型，这成为异常规范，有些教程也称为异常指示符或一场列表。如下例子：
+​	**C++98中的异常规范**：**throw 关键字除了可以用在函数体中抛出异常，还可以用在函数头和函数体之间，指明当前函数能够抛出的异常类型，这成为异常规范，有些教程也称为异常指示符或异常列表**。如下例子：
 
 ```c++11
 double func1(char param) throw(int);
@@ -1071,7 +1071,7 @@ double func1(char param) throw(int);
 ​	函数 func1 只能抛出 int 类型的异常。如果抛出其他类型的异常，try 将无法捕获，并直接调用 std::unexpected。如果函数会抛出多种类型的异常，那么可以用逗号隔开：
 
 ```c++
-double func2(char param) throow(int, char, exception);
+double func2(char param) throw(int, char, exception);
 ```
 
 ​	如果函数不会抛出任何异常，那么只需要写一个空括号即可：
@@ -1094,8 +1094,8 @@ class Base{
 class Derived: public Base{
   public:
     int fun1(int) throw(int);		// 错！一场规范不如throw()严格
-    int fun2(int) throw(int);		// 对！有相同的一场规范
-    string func3 throw(string);		// 对！异常规范比throw(int,string)更严格
+    int fun2(int) throw(int);		// 对！有相同的异常规范
+    int func3() throw(int, string, double);		// 对！异常规范比throw(int,string)更严格
 };
 ```
 
@@ -1117,7 +1117,7 @@ void func3() throw(float, char*){}
 
 ​	**异常规范在C++11中被摒弃**：异常规范的初衷是好的，它希望让我们看到函数的定义或者声明后，立马知道该函数会抛出什么类型的异常，好让我们可以使用 try-catch 来捕获。如果没有异常规范，必须阅读函数源码才能知道函数会抛出什么异常。不过这有时候也不容易做到。例如，func_outer() 函数可能不会引发异常，但是它调用了另外一个函数 func_inner()，这个函数可能会引发异常。再如，编写一个函数调用了老式的一个函数库，此时不会引发异常，但是老式库更新后却引发了异常。
 
-​	1、一场规范的检查是在运行期而不是编译期，因此程序员不能保证所有异常都能得到 catch 处理
+​	1、异常规范的检查是在运行期而不是编译期，因此程序员不能保证所有异常都能得到 catch 处理
 
 ​	2、由于第一点的存在，编译器需要生成额外的代码，在一定程度上妨碍优化
 
@@ -1272,7 +1272,7 @@ copy constructor
 
 ***使用建议***：
 
-我们所编写的函数默认都不适用，只有遇到以下的情况你在思考是否需要使用，
+我们所编写的函数默认都不适用，只有遇到以下的情况你再思考是否需要使用，
 
 1、析构函数
 
@@ -1290,7 +1290,7 @@ copy constructor
 
 #### ***Item 15. 尽可能使用 constexpr***
 
-​	constexpr 是一个很让人疑惑的关键字。当应用于对象时，他本质上是 const 的增强形式，但是应用于函数时，它具有完全不同的含义。从概念上讲，constexpr 表示的值不仅是常量，而且在编译期间是已知的。但是 constexpr 修饰函数就不是这样了。
+​	constexpr 是一个很让人疑惑的关键字。当应用于对象时，他本质上是 const 的增强形式，但是应用于函数时，它具有完全不同的含义。从概念上讲，**constexpr 表示的值不仅是常量，而且在编译期间是已知的**。但是 constexpr 修饰函数就不是这样了。
 
 ​	先从 constexpr 修饰对象开始，这些对象实际上是 const，并且他们确实具有在编译时已知的值。编译器期间已知的值有一定特殊用处。例如它们可能被放置在只读存储器中，尤其对于嵌入式系统的开发人员来说，这可能是一个相当重要的特性。另外它可以用于常量表达式上下文（包括 std::array 对象的长度，枚举值，对齐说明符等）。如果你想使用常量可以使用 constexpr：
 
@@ -1357,12 +1357,12 @@ constexpr int pow(int base, int exp) noexcept
 constexpr int pow(int base, int exp) noexcept
 {
     auto result = 1;
-    for (int i=0; i<exp; ++i) result *= result;
+    for (int i=0; i<exp; ++i) result *= base;
 	return result;
 }	// 多条语句
 ```
 
-​	constexpr 函数仅限于获取和返回 "字面量"(constexpr)，这就意味着需要在编译期间确定值的类型。在 C++11 中，除了 void 之外的所有内置类型都符合，但是用户自定义的类型可能也可能是"字面量"，因为构造函数和其他成员函数可能是 consetexpr：
+​	constexpr 函数仅限于获取和返回 "字面量"(constexpr)，这就意味着需要在编译期间确定值的类型。在 C++11 中，除了 void 之外的所有内置类型都符合，但是用户自定义的类型也可能是"字面量"，因为构造函数和其他成员函数可能是 consetexpr：
 
 ```c++
 class Point{
@@ -1438,7 +1438,7 @@ constexpr auto reflectedMid = reflection(mid);		// reflectedMid's value
 
 * constexpr 对象是常量，并使用编译期间已知的值进行初始化
 * constexpr 函数可以在使用编译期间已知值的参数调用时产生编译时结果
-* constexpr 对象和函数可以在比 constexpr 对象和函数更广泛的上下文中使用
+* constexpr 对象和函数可以在比非 constexpr 对象和函数更广泛的上下文中使用
 * constexpr 是对象或函数接口的一部分
 
 ----
@@ -1451,7 +1451,7 @@ constexpr auto reflectedMid = reflection(mid);		// reflectedMid's value
 // 计算多项式并返回结果
 class polynomial{
   public:
-    using RootsType = std::vector<double>; // data structure holding 											   // values where evals to zero 											// (see Item9 for info on
+    using RootsType = std::vector<double>; // data structure holding 															   // values where evals to zero 														   // (see Item9 for info on "using")
     RootsType roots() const
     {
         if(!rootsAreValid){			// if cache not valid
@@ -1475,7 +1475,7 @@ Polynomial p;
 auto rootsOfp = p.roots();		auto valsGivingZero = p.roots();
 ```
 
-​	这个场景非常最常见，因为 roots 是 const 成员函数，也就是代表只读操作。但是类内部的 rootAreValid 和 rootVals。这就意味着这段代码可以让不同的线程在没有同步的情况下读取和写入相同的内存（声明为const 但是并非线程安全），这将导致未定义的行为。
+​	这个场景非常最常见，因为 roots 是 const 成员函数，也就是代表只读操作。但是类内部的 rootAreValid 和 rootVals 可以让不同的线程在没有同步的情况下读取和写入相同的内存（声明为const 但是并非线程安全），这将导致未定义的行为。
 
 ​	最简单的解决方法是：使用 mutex。
 
@@ -1631,7 +1631,7 @@ class Widget{
   public:
     ...
 	Widget(Widget&& rhs);				// move constructor
-    Widget& operator=(Widget** rhs);	// move assignment operator
+    Widget& operator=(Widget&& rhs);	// move assignment operator
 	...
 };
 ```
@@ -1642,7 +1642,7 @@ class Widget{
 
 ​	这两个移动操作不是独立的。如果声明一个则会阻止编译器生成另一个。基本原理是，如果为类声明一个移动构造函数则说明我们不希望使用编译器为我们生成的默认成员移动。如果成员移动构造有问题，成员移动赋值操作也可能有问题。因此，***声明移动构造函数会防止移动赋值运算符的生成，而声明移动赋值运算符也会防止编译器生成移动构造函数***。
 
-​	此外，***不会为任何明确声明复制操作的类型生成移动操作***。理由是声明复制操作（构造或赋值）表明复制对象的正常方法（成员复制）不适用于该类，并且编译器认为如果成员复制不适用于复制操作，成员移动可能不适合移动操作。
+​	此外，***不会为任何明确声明复制操作的类型生成移动操作***。这是因为如果声明复制操作（构造或赋值）表明默认的复制方法（成员复制）不适用于该类，然后编译器可能会认为如果默认复制操作不适用于成员复制，那么默认移动操作可能也不适合成员移动。
 
 ​	如果在类中声明移动操作（移动构造或移动赋值）会导致编译器禁用复制操作（通过 delete 声明来禁用--item11）。毕竟，如果按成员移动不是对对象的正确方法，则按成员复制也可能不是复制它的正确方法。这听起来可能会破坏 C++98 代码，因为在 C++11 中启用复制操作受到限制的条件比 C++98 中更多，但是并非如此。C++98 代码不能有移动操作，因为在 C++98 中们有"移动"对象这个东西。遗留类可以拥有用户声明的移动操作的唯一方法是，如果他们是为 C++11 添加的，并且被修改以利用移动语义的类必须按照 C++11 规则来生成特殊成员函数。
 
