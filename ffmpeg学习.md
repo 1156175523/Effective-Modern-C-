@@ -261,7 +261,7 @@
   * @param s 现有的 Swr 上下文（如果可用），如果不可用，则为 NULL
   * @param out_ch_layout 输出通道布局 (AV_CH_LAYOUT_*) ，声道格式，立体声道
   * @param out_sample_fmt 输出样本格式 (AV_SAMPLE_FMT_*)，采样格式FLT，eg:格式
-  * @param out_sample_rate 输出采样率（频率单位为Hz）
+    * @param out_sample_rate 输出采样率（频率单位为Hz）
   * @param in_ch_layout 输入通道布局 (AV_CH_LAYOUT_*)，
   * @param in_sample_fmt 输入样本格式 (AV_SAMPLE_FMT_*)
   * @param in_sample_rate 输入采样率（频率单位为Hz）
@@ -275,14 +275,146 @@
 
   * 转换函数
   * @param s 分配 Swr 上下文，设置参数
-  * @param out 输出缓冲区，在打包音频的情况下只需要设置第一个
-  * @param out_count 每个通道的样本输出可用空间量
-  * @param 在输入缓冲区中，只有第一个需要在打包音频的情况下设置 
-  * @param in_count 一个通道中可用的输入样本数 
+  * @param out 输出缓冲区，在packet是音频的情况下只需要设置第一个
+  * @param out_count 每个通道输出样本大小
+  * @param 在输入缓冲区中，在packet是音频的情况下只需要设置第一个，eg:frame->data
+  * @param in_count 每个通道输入样本大小，eg:frame->nb_sample
 
 * int swr_init(struct SwrContext *s);
 
   * Initialize context after user parameters have been set. 使用 swr_alloc_set_opts 设置参数后初始化
 
 * void swr_free(struct SwrContext **s);
+
+
+
+--------------------------------------------------------------
+
+## Qt相关
+
+**QAudioFormat**类：
+
+* 音频设置类
+
+* setSampleRate setSampleSize
+* setChannelCount setCodec("audio/pcm")
+* setByteOrder(QAudioFormat::LittleEndian)
+* setSampleType(QAudioFormat::UnsignedInt)
+
+**QAudioOutput**类：
+
+* 音频播放类
+* QIODevice* start()
+* suspend()    //暂停
+* resume()      //恢复
+* bufferSize()  //
+* byteFree()     //
+* periodSize()  //
+
+**QIODevice**类：
+
+* qint64 write(const char* data, qint64 len);
+
+
+
+## Qt + openGL编程
+
+* 使用openGL的原因
+
+  * 使用 openGL 可以提高显示效率
+
+* QOpenGLWidget (与界面如何交互)
+
+  * 使用 Qt 的 opengl 的原因
+    * QOpenGLWidget 功能完善
+  * 使用的接口
+    * void paintGL();
+    * void initializeGL();
+    * void resizeGL(int width, int height);
+    * QOpenGLFunctions
+
+* QGLShaderProgram
+
+  * 编译运行shader
+  * addShaderFromSourceCode   // 添加 shader
+  * bindAttrubuteLocation             // 设置传入的变量
+  * uniformLocation                        // 获取变量
+
+* Program GLSL 顶点和片元 (如何与显卡交互)
+
+  * GLSL 是针对 openGL 的着色器语言
+
+  * 顶点着色器：是针对每个顶点执行一次，用于确定顶点的位置；
+
+  * 片元着色器：是针对每个片元（乐意理解为每个像素）执行一次，用于确定每个片元（像素）的颜色
+
+  * GLSL 的基本语法与 C 基本相同
+
+  * GLSL 完美的支持向量和矩阵操作
+
+  * GLSL 提供了大量的内置函数来提供丰富的扩展功能
+
+  * GLSL 通过限定符操作来管理输入输出类型的
+
+  * 三种 GLSL 变量类型
+
+    * varying 顶点与片元共享
+
+    * attribute 顶点使用，由 bindAttributeLocation 传入
+
+    * uniform 程序传入 uniformLocation 获取地址
+
+      glUniform1i(textureUniformY, 0);   设置
+
+* 材质 Texture (如何写入 ffmpeg 数据)
+
+  * 创建材质
+
+    * glGenTextures(1, t);
+    * glBindTexture(GL_TEXTURE_2D, *t);
+    * glTextParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    * glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      * GL_TEXTURE_2D：操作2D纹理
+      * GL_TEXTURE_MIN_FILTER：缩小过滤
+      * GL_TEXTURE_MAG_FILTER：放大过滤
+      * GL_LINEAR：线性过滤，使用距离当前渲染像素中心最近的4个文素加权平均值
+
+  * 写入和绘制材质
+
+    * glActiveTexture(GL_TEXTURE0);    // 激活
+
+    * glBindTexture(GL_TEXTURE_2D, id_y);
+
+    * glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, pixel_w, pixel_h, 0,
+
+      ​                           GL_LUMINANCE, GL_UNSIGNED_BYTE, plane[0]);
+
+    * glUniform1i(textureUniformY, 0);
+
+    * glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+  * glTexImage2D
+
+    * glTexImage2D(GL_TEXTURE_2D,    // 创建纹理
+
+      0,                                                          // 细节 0默认
+
+      GL_RED,                                              // GPU 内部格式
+
+      videoWidth,
+
+      videoHeight,
+
+      GL_RED,                                               // 数据格式
+
+      GL_UNSIGNED_BYTE,                        // 像素的数据类型 
+
+      data);
+
+* 传入顶点和材质坐标
+
+  * glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, vertexVertices);
+  * glEnableVertexAttribArray(ATTRIB_VERTEX);
+  * glVertexAttribPointer(ATTRIB_TEXTURE, 2, GL_FLOAT, 0, 0, textureVertices);
+  * glEnableVertexAttribArray(ATTRIB_TEXTURE)
 
